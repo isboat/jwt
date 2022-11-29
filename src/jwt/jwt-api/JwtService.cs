@@ -21,7 +21,7 @@ namespace jwt_api
             _jwtSigningKey =  "asdv234234^&%&^%&^hjsdfb2%%%";
         }
 
-        public string GenerateToken()
+        public string GenerateToken(UserData userData)
         {
             var mySecurityKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(_jwtSigningKey));
 
@@ -29,9 +29,11 @@ namespace jwt_api
             {
                 Subject = new ClaimsIdentity(new Claim[]
                 {
-                    new Claim("clientid", "123456"),
+                    new Claim("userid", userData.Id),
+                    new Claim("name", userData.Name),
+                    new Claim("username", userData.Username)
                 }),
-                Expires = DateTime.UtcNow.AddDays(7),
+                Expires = DateTime.UtcNow.AddMinutes(1),
                 Issuer = _jwtIssuer,
                 Audience = _jwtAudience,
                 SigningCredentials = new SigningCredentials(mySecurityKey, SecurityAlgorithms.HmacSha256Signature)
@@ -43,16 +45,25 @@ namespace jwt_api
 
         public void ValidateToken(string token)
         {
-            _ = _jwtSecurityTokenHandler.ValidateToken(token,
+            var claimsPrincipal = _jwtSecurityTokenHandler.ValidateToken(token,
                 new TokenValidationParameters
                 {
+                    RequireExpirationTime = true,
+                    RequireSignedTokens = true,
                     ValidateAudience = true,
+                    ValidateIssuer = true,
                     ValidIssuer = _jwtIssuer,
                     ValidAudience = _jwtAudience,
-                    ValidateIssuer = true,
                     ValidateLifetime = true,
+
+                    // Allow for some drift in server time
+                    // (a lower value is better; we recommend two minutes or less)
+                    ClockSkew = TimeSpan.FromSeconds(0),
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(_jwtSigningKey))
-                }, out _);
+                }, out var securityToken);
+
+            if (securityToken is not JwtSecurityToken jwtSecurityToken || !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+                throw new SecurityTokenException("Invalid token");
         }
 
         public JwtSecurityToken ReadToken(string token)
@@ -64,7 +75,7 @@ namespace jwt_api
 
     public interface IJwtService
     {
-        string GenerateToken();
+        string GenerateToken(UserData userData);
 
         void ValidateToken(string token);
 
